@@ -16,6 +16,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 import org.apache.maven.model.Model;
 import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
@@ -190,7 +191,12 @@ public class BWJsonMojo extends AbstractMojo{
 	}
 
 
-	private void createServiceYmlFile(Properties k8sprop) throws MojoExecutionException{
+	private void createServiceYmlFile(Properties k8sprops) throws MojoExecutionException{
+
+		if(k8sprops.getProperty("fabric8.service") != null && k8sprops.getProperty("fabric8.service").equals("false"))
+			return;
+		
+		
 		String locationService = getWorkspacepath() + File.separator + "src/main/fabric8/service.yml";
 		File serviceFile = new File(Paths.get(locationService).toString());
 		try {
@@ -202,30 +208,64 @@ public class BWJsonMojo extends AbstractMojo{
 
 		dataService.put("kind", "Service");
 		Map<String, Object> metadataService=new HashMap<String, Object>();
-		metadataService.put("name", k8sprop.getProperty("fabric8.service.name"));
+		metadataService.put("name", k8sprops.getProperty("fabric8.service.name"));
 
 		Map<String, Object> serviceLabels= new HashMap<String, Object>();
-		serviceLabels.put("container", k8sprop.getProperty("fabric8.container.name"));
-		serviceLabels.put("project", k8sprop.getProperty("fabric8.label.project"));
+		serviceLabels.put("container", k8sprops.getProperty("fabric8.container.name"));
+		serviceLabels.put("project", k8sprops.getProperty("fabric8.label.project"));
 		serviceLabels.put("provider","fabric8");
 		serviceLabels.put("group", "com.tibco.bw");
 		metadataService.put("labels",serviceLabels);
-		metadataService.put("namespace",k8sprop.getProperty("fabric8.namespace"));
+		metadataService.put("namespace",k8sprops.getProperty("fabric8.namespace"));
 		dataService.put("metadata", metadataService);
 		Map<String, Object> specdataService=new HashMap<String, Object>();
-		specdataService.put("type", k8sprop.getProperty("fabric8.service.type"));
+		specdataService.put("type", k8sprops.getProperty("fabric8.service.type"));
 
 		List<Map<String, Object>> portsList=new ArrayList<Map<String, Object>>();
 		Map<String, Object> portInfo=new HashMap<String, Object>();
-		portInfo.put("port", Integer.parseInt(k8sprop.getProperty("fabric8.service.port")));
-		portInfo.put("targetPort", Integer.parseInt(k8sprop.getProperty("fabric8.service.containerPort")));
-		portInfo.put("protocol", "TCP");
+		if(k8sprops.getProperty("fabric8.service.port") != null)
+			portInfo.put("port", Integer.parseInt(k8sprops.getProperty("fabric8.service.port")));
+		if(k8sprops.getProperty("fabric8.service.containerPort") != null)
+			portInfo.put("targetPort", Integer.parseInt(k8sprops.getProperty("fabric8.service.containerPort")));
+		if(k8sprops.getProperty("fabric8.service.nodePort") != null)
+			portInfo.put("nodePort", Integer.parseInt(k8sprops.getProperty("fabric8.service.nodePort")));
 		portsList.add(portInfo);
-		specdataService.put("ports", portsList);
 
+
+		Set<Object> portKeys = k8sprops.keySet();
+		Map<String, Object> port = null;
+		Map<String, String> portName = new HashMap<String, String>(); 
+		
+		if(portKeys!=null){
+			for(Object key: portKeys){
+				String keyVal= key.toString();
+				if(keyVal!=null) {
+					if(Pattern.matches("fabric8.service.(nodePort|port|protocol|containerPort)[.].*", keyVal)) {
+						String name = keyVal.split("\\.")[3];
+						portName.put(name, name);
+					}
+					
+				}
+			}
+		}
+		
+		for (String name : portName.keySet()) {
+			port = new HashMap<String, Object>();	
+			port.put("name", name);
+			port.put("port", Integer.parseInt(k8sprops.getProperty("fabric8.service.port." + name)));
+			if(k8sprops.getProperty("fabric8.service.containerPort." + name) != null)
+				port.put("targetPort", Integer.parseInt(k8sprops.getProperty("fabric8.service.containerPort." + name)));
+			if(k8sprops.getProperty("fabric8.service.nodePort." + name) != null)
+				port.put("nodePort", Integer.parseInt(k8sprops.getProperty("fabric8.service.nodePort." + name)));
+			
+			portsList.add(port);	
+		}
+		
+		specdataService.put("ports", portsList);
+		
 		Map<String, String> appInfo=new HashMap<String, String>();
-		appInfo.put("container", k8sprop.getProperty("fabric8.container.name"));
-		appInfo.put("project", k8sprop.getProperty("fabric8.label.project"));
+		appInfo.put("container", k8sprops.getProperty("fabric8.container.name"));
+		appInfo.put("project", k8sprops.getProperty("fabric8.label.project"));
 		appInfo.put("provider","fabric8");
 		appInfo.put("group", "com.tibco.bw");
 		specdataService.put("selector", appInfo);
